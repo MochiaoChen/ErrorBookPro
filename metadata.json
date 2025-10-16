@@ -1,0 +1,5 @@
+{
+  "name": "错题本 Pro (Error Analysis Pro)",
+  "description": "An intelligent error analysis application for Chinese high school students. Users can upload photos of their test papers, and the app will automatically extract incorrect questions, analyze knowledge gaps, and generate new practice tests to help them improve.",
+  "requestFramePermissions": []
+}
