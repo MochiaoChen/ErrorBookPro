@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 type IconProps = { className?: string };
@@ -67,4 +66,16 @@ export const EyeOff: React.FC<IconProps> = ({ className = "w-6 h-6" }) => (
         <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path>
         <line x1="2" x2="22" y1="2" y2="22"></line>
     </svg>
+);
+
+export const MessageCircle: React.FC<IconProps> = ({ className = "w-6 h-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+);
+
+export const Send: React.FC<IconProps> = ({ className = "w-6 h-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+);
+
+export const X: React.FC<IconProps> = ({ className = "w-6 h-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
 );

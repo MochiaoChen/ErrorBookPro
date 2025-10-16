@@ -1,7 +1,7 @@
-
 import React, { useState } from 'react';
 import type { PracticeQuestion } from '../types';
 import { Eye, EyeOff } from './Icons';
+import ContentRenderer from './ContentRenderer';
 
 interface PracticeTestProps {
   questions: PracticeQuestion[];
@@ -21,7 +21,9 @@ const PracticeTest: React.FC<PracticeTestProps> = ({ questions }) => {
         {questions.map((q, index) => (
           <div key={q.id} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
             <p className="font-semibold text-gray-600 mb-3">第 {index + 1} 题</p>
-            <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">{q.questionText}</p>
+            <div className="text-gray-800">
+                <ContentRenderer content={q.questionText} />
+            </div>
             
             <div className="mt-4">
               <button onClick={() => toggleAnswer(q.id)} className="flex items-center text-sm font-medium text-indigo-600 hover:text-indigo-800 transition">
@@ -33,7 +35,9 @@ const PracticeTest: React.FC<PracticeTestProps> = ({ questions }) => {
             {visibleAnswers[q.id] && (
               <div className="mt-4 p-4 bg-green-50 border-l-4 border-green-500 rounded-r-lg">
                 <p className="font-semibold text-green-800 mb-2">详解：</p>
-                <p className="text-green-900 whitespace-pre-wrap leading-relaxed">{q.answerText}</p>
+                <div className="text-green-900">
+                    <ContentRenderer content={q.answerText} />
+                </div>
               </div>
             )}
           </div>

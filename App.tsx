@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { GoogleGenAI, Chat } from "@google/genai";
 import { extractQuestionsFromImage, analyzeKnowledgePoints, generatePracticeTest } from './services/geminiService';
-import type { Question, PracticeQuestion } from './types';
+import type { Question, PracticeQuestion, KnowledgePoint, ChatMessage } from './types';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
 import QuestionList from './components/QuestionList';
@@ -9,33 +10,74 @@ import AnalysisDisplay from './components/AnalysisDisplay';
 import PracticeTest from './components/PracticeTest';
 import Spinner from './components/Spinner';
 import TabButton from './components/TabButton';
-import { BookOpen, Edit, FilePlus, Zap } from './components/Icons';
+import ChatModal from './components/ChatModal';
+import { BookOpen, Edit, FilePlus, Zap, MessageCircle } from './components/Icons';
 
 type Tab = 'upload' | 'bank' | 'analysis' | 'practice';
+
+const defaultQuestions: Question[] = [
+  {
+    id: 'default-1',
+    subject: '数学',
+    questionText: '已知函数 $f(x) = \\sin(\\omega x + \\phi)$ ($\\omega > 0, |\\phi| < \\pi/2$) 的图像相邻两条对称轴之间的距离为 $\\pi/2$，且 $f(\\pi/6) = 1$。求 $f(x)$ 的解析式。',
+  },
+  {
+    id: 'default-2',
+    subject: '物理',
+    questionText: '一个质量为 2kg 的物体，在水平拉力 F 的作用下，从静止开始沿粗糙水平面做匀加速直线运动。经过 3s，物体的速度达到 6m/s。已知物体与水平面间的动摩擦因数为 0.2，$g=10m/s^2$。求拉力 F 的大小。',
+  },
+  {
+    id: 'default-3',
+    subject: '化学',
+    questionText: '将 23g 钠投入到 100g 水中，完全反应后，所得溶液的溶质质量分数是多少？（Na=23, H=1, O=16）',
+  }
+];
+
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('upload');
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [extractedQuestions, setExtractedQuestions] = useState<Question[]>([]);
   const [questionBank, setQuestionBank] = useState<Question[]>([]);
-  const [analysisResult, setAnalysisResult] = useState<string>('');
+  const [analysisResult, setAnalysisResult] = useState<KnowledgePoint[]>([]);
   const [practiceTest, setPracticeTest] = useState<PracticeQuestion[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadingMessage, setLoadingMessage] = useState('正在处理中...');
   const [error, setError] = useState<string>('');
+
+  // New state for Chat
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [currentChatQuestion, setCurrentChatQuestion] = useState<Question | null>(null);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [chatSession, setChatSession] = useState<Chat | null>(null);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
   useEffect(() => {
     try {
       const savedBank = localStorage.getItem('questionBank');
       if (savedBank) {
-        setQuestionBank(JSON.parse(savedBank));
+        const parsedBank = JSON.parse(savedBank);
+        if (parsedBank.length > 0) {
+          setQuestionBank(parsedBank);
+          return;
+        }
       }
+      setQuestionBank(defaultQuestions);
     } catch (e) {
       console.error("Failed to load question bank from localStorage", e);
       setError("无法从本地加载错题库。");
+      setQuestionBank(defaultQuestions);
     }
   }, []);
 
   useEffect(() => {
+    const isDefault = questionBank.length === defaultQuestions.length && questionBank.every((q, i) => q.id === defaultQuestions[i].id);
+    if (isDefault && !localStorage.getItem('questionBank')) {
+        return;
+    }
+
     try {
       localStorage.setItem('questionBank', JSON.stringify(questionBank));
     } catch (e) {
@@ -56,6 +98,7 @@ const App: React.FC = () => {
       return;
     }
     setIsLoading(true);
+    setLoadingMessage('正在识别题目...');
     setError('');
     try {
       const imageData = uploadedImage.split(',')[1];
@@ -71,7 +114,7 @@ const App: React.FC = () => {
 
   const handleAddToBank = () => {
     const newQuestions = extractedQuestions.filter(
-      (eq) => !questionBank.some((bq) => bq.id === eq.id)
+      (eq) => !questionBank.some((bq) => bq.questionText === eq.questionText)
     );
     if (newQuestions.length > 0) {
         setQuestionBank((prevBank) => [...prevBank, ...newQuestions]);
@@ -91,6 +134,7 @@ const App: React.FC = () => {
         return;
     }
     setIsLoading(true);
+    setLoadingMessage('正在分析知识点...');
     setError('');
     try {
         const result = await analyzeKnowledgePoints(questionBank);
@@ -105,12 +149,13 @@ const App: React.FC = () => {
   }, [questionBank]);
 
   const handleGenerateTest = useCallback(async () => {
-    if (!analysisResult) {
+    if (analysisResult.length === 0) {
         setError("请先进行知识点分析。");
         setActiveTab('analysis');
         return;
     }
     setIsLoading(true);
+    setLoadingMessage('正在生成练习题...');
     setError('');
     try {
         const test = await generatePracticeTest(analysisResult);
@@ -124,9 +169,80 @@ const App: React.FC = () => {
     }
   }, [analysisResult]);
 
+  // Chat handlers
+  const handleOpenChat = useCallback(async (question: Question) => {
+    setCurrentChatQuestion(question);
+    setIsChatOpen(true);
+    setChatHistory([]);
+    setIsChatLoading(true);
+
+    try {
+      const chat = ai.chats.create({
+        model: 'gemini-2.5-pro',
+        config: {
+          systemInstruction: '你是一位耐心、知识渊博的高中辅导老师。你的目标是清晰地解释概念，并引导学生找到答案，而不是直接给出答案。请用中文回答。所有数学公式都必须使用LaTeX格式（行内用 $...$ ，块级用 $$...$$）。',
+        },
+      });
+      setChatSession(chat);
+
+      const firstMessage = `你好，这是一道我做错的题，可以请你帮我看看吗？\n\n题目：${question.questionText}`;
+      const responseStream = await chat.sendMessageStream({ message: firstMessage });
+      
+      let fullResponse = "";
+      setChatHistory([{ sender: 'ai', text: "" }]);
+      for await (const chunk of responseStream) {
+        fullResponse += chunk.text;
+        setChatHistory([{ sender: 'ai', text: fullResponse }]);
+      }
+    } catch (err) {
+      console.error(err);
+      setChatHistory([{ sender: 'ai', text: '抱歉，我现在无法开始辅导。请稍后再试。' }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  }, []);
+  
+  const handleCloseChat = () => {
+    setIsChatOpen(false);
+    setCurrentChatQuestion(null);
+    setChatSession(null);
+  };
+
+  const handleSendChatMessage = useCallback(async (message: string) => {
+    if (!chatSession) return;
+    
+    const updatedHistory: ChatMessage[] = [...chatHistory, { sender: 'user', text: message }];
+    setChatHistory(updatedHistory);
+    setIsChatLoading(true);
+
+    try {
+      const responseStream = await chatSession.sendMessageStream({ message });
+      
+      let fullResponse = "";
+      const aiMessageIndex = updatedHistory.length;
+      updatedHistory.push({ sender: 'ai', text: "" });
+      
+      for await (const chunk of responseStream) {
+        fullResponse += chunk.text;
+        updatedHistory[aiMessageIndex] = { sender: 'ai', text: fullResponse };
+        setChatHistory([...updatedHistory]);
+      }
+
+    } catch (err) {
+       console.error(err);
+       // FIX: The original code had a logical flaw (using stale `chatHistory`) which also led to a type error.
+       // `updatedHistory` correctly contains the user's message for this turn.
+       // We append the error message to `updatedHistory` to form the correct final state.
+       const finalHistory = [...updatedHistory, { sender: 'ai', text: "抱歉，我好像遇到了一些问题，请稍后再试。" }];
+       setChatHistory(finalHistory);
+    } finally {
+        setIsChatLoading(false);
+    }
+  }, [chatSession, chatHistory]);
+
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-100">
       <Header />
       <main className="container mx-auto p-4 md:p-8 max-w-5xl">
         <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-6 border border-gray-200">
@@ -138,7 +254,7 @@ const App: React.FC = () => {
           </div>
 
           {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-4" role="alert">{error}</div>}
-          {isLoading && <Spinner />}
+          {isLoading && <Spinner message={loadingMessage} />}
           
           <div className={`transition-opacity duration-300 ${isLoading ? 'opacity-20' : 'opacity-100'}`}>
             {activeTab === 'upload' && (
@@ -169,7 +285,7 @@ const App: React.FC = () => {
                 <h2 className="text-2xl font-bold mb-4 text-gray-800">我的错题库 ({questionBank.length})</h2>
                 {questionBank.length > 0 ? (
                   <>
-                    <QuestionList questions={questionBank} onDelete={handleDeleteFromBank}/>
+                    <QuestionList questions={questionBank} onDelete={handleDeleteFromBank} onStartChat={handleOpenChat} />
                      <div className="mt-8 flex flex-col sm:flex-row justify-center gap-4">
                         <button onClick={handleAnalysis} disabled={isLoading} className="bg-sky-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-sky-700 transition duration-300 disabled:bg-sky-300 text-lg flex items-center justify-center gap-2">
                             <Zap /> 分析知识点
@@ -187,9 +303,9 @@ const App: React.FC = () => {
             )}
             {activeTab === 'analysis' && (
               <div>
-                {analysisResult ? (
+                {analysisResult.length > 0 ? (
                     <>
-                        <AnalysisDisplay analysis={analysisResult} />
+                        <AnalysisDisplay analysis={analysisResult} questions={questionBank} />
                         <div className="mt-8 flex flex-col sm:flex-row justify-center gap-4">
                              <button onClick={handleGenerateTest} disabled={isLoading} className="bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-emerald-700 transition duration-300 disabled:bg-emerald-300 text-lg flex items-center justify-center gap-2">
                                 <Edit /> 生成巩固练习
@@ -221,6 +337,14 @@ const App: React.FC = () => {
           </div>
         </div>
       </main>
+      <ChatModal 
+        isOpen={isChatOpen}
+        onClose={handleCloseChat}
+        question={currentChatQuestion}
+        chatHistory={chatHistory}
+        onSendMessage={handleSendChatMessage}
+        isLoading={isChatLoading}
+      />
     </div>
   );
 };

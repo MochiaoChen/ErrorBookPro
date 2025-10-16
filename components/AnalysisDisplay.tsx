@@ -1,43 +1,47 @@
-
 import React from 'react';
-
-// A simple markdown-to-HTML parser for this specific use case.
-const SimpleMarkdown: React.FC<{ text: string }> = ({ text }) => {
-  const lines = text.split('\n');
-  const elements = lines.map((line, index) => {
-    if (line.startsWith('### ')) {
-      return <h3 key={index} className="text-lg font-semibold mt-4 mb-2 text-gray-700">{line.substring(4)}</h3>;
-    }
-    if (line.startsWith('## ')) {
-      return <h2 key={index} className="text-xl font-bold mt-6 mb-3 text-gray-800 border-b pb-1">{line.substring(3)}</h2>;
-    }
-    if (line.startsWith('# ')) {
-      return <h1 key={index} className="text-2xl font-bold mt-8 mb-4 text-indigo-700">{line.substring(2)}</h1>;
-    }
-    if (line.startsWith('* ') || line.startsWith('- ')) {
-      const formattedLine = line.substring(2).replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>');
-      return <li key={index} className="ml-5 list-disc" dangerouslySetInnerHTML={{ __html: formattedLine }} />;
-    }
-    if (line.trim() === '') {
-        return <br key={index} />;
-    }
-    const formattedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>');
-    return <p key={index} className="mb-2 text-gray-600 leading-relaxed" dangerouslySetInnerHTML={{ __html: formattedLine }} />;
-  });
-
-  return <>{elements}</>;
-};
+import type { KnowledgePoint, Question } from '../types';
+import ContentRenderer from './ContentRenderer';
+import { Zap } from './Icons';
 
 interface AnalysisDisplayProps {
-  analysis: string;
+  analysis: KnowledgePoint[];
+  questions: Question[];
 }
 
-const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ analysis }) => {
+const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ analysis, questions }) => {
+  const getQuestionById = (id: string) => questions.find(q => q.id === id);
+
   return (
-    <div className="bg-white p-6 rounded-lg border">
-      <h2 className="text-2xl font-bold mb-4 text-gray-800">知识点分析与复习提纲</h2>
-      <div className="prose max-w-none text-gray-700">
-          <SimpleMarkdown text={analysis} />
+    <div>
+      <h2 className="text-2xl font-bold mb-6 text-gray-800">知识点分析报告</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {analysis.map((point, index) => (
+          <div key={index} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-lg hover:border-indigo-300 transition-all duration-300">
+            <h3 className="text-lg font-bold text-indigo-700 mb-2 flex items-center gap-2">
+              <Zap className="w-5 h-5 text-indigo-500"/>
+              {point.title}
+            </h3>
+            <div className="text-gray-600 mb-4 text-sm">
+              <ContentRenderer content={point.description} />
+            </div>
+            
+            {point.relevantQuestionIds.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-gray-700 mb-2 text-sm">相关错题：</h4>
+                <div className="space-y-2">
+                  {point.relevantQuestionIds.map(qId => {
+                    const question = getQuestionById(qId);
+                    return question ? (
+                      <div key={qId} className="text-xs p-2 bg-gray-50 rounded-md border text-gray-500 truncate">
+                         <strong>[{question.subject}]</strong> {question.questionText.substring(0, 50)}...
+                      </div>
+                    ) : null;
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
